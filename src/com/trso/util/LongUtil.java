@@ -28,12 +28,20 @@
  */
 package com.trso.util;
 
+/**
+ * @author pwg
+ *
+ */
 public class LongUtil
 {
 	@SuppressWarnings("unused")
 	private static final String CLASS_ID = "$Id$";
 
 	
+	/**
+	 * @param data
+	 * @return
+	 */
 	public static byte[] asByteArray( long data )
 	{
 		return(
@@ -49,6 +57,17 @@ public class LongUtil
 						}
 		);
 	}
+	/**
+	 * @param data8
+	 * @param data7
+	 * @param data6
+	 * @param data5
+	 * @param data4
+	 * @param data3
+	 * @param data2
+	 * @param data1
+	 * @return
+	 */
 	public static long fromBytes( byte data8, byte data7, byte data6, byte data5, byte data4, byte data3, byte data2, byte data1 )
 	{
 		long v = data8;

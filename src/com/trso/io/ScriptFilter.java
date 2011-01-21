@@ -52,12 +52,14 @@ import javax.script.SimpleScriptContext;
  * @author Preston Gilchrist
  *
  */
-public class BeanshellFilter
+public class ScriptFilter
 	extends FilterReader
 {
 	@SuppressWarnings("unused")
 	private static final String CLASS_ID = "$Id$";
-	private ScriptEngine engine = new ScriptEngineManager().getEngineByName("bsh");
+	private ScriptEngineManager engineManager = new ScriptEngineManager();
+	private ScriptEngine engine = null;
+	private String engineName = "js";
 	private ScriptContext sc = new SimpleScriptContext();
 	private PipedWriter shellWriter = new PipedWriter();
 	private boolean init = false;
@@ -65,9 +67,9 @@ public class BeanshellFilter
 	private Exception scriptException = null;
 	
 	/**
-	 * This a convenience method to allow command line execution of the Beanshell filter against a file.
+	 * This a convenience method to allow command line execution of the Script filter against a file.
 	 * 
-	 * @param args a list of files which to process with the Beanshell filter reader
+	 * @param args a list of files which to process with the Script filter reader
 	 */
 	public static void main( String[] args )
 	{
@@ -83,7 +85,7 @@ public class BeanshellFilter
 				base = new InputStreamReader( System.in );
 			}
 		
-			BeanshellFilter bshf = new BeanshellFilter(new BeanshellTemplateCodeGen(base));
+			ScriptFilter bshf = new ScriptFilter(new ScriptTemplateCodeGenerator(base));
 			for( int v = bshf.read(); v > -1 ; v = bshf.read() )
 			{
 				System.out.print((char)v);
@@ -96,7 +98,7 @@ public class BeanshellFilter
 		}
 	}
 	
-	public BeanshellFilter( Reader in )
+	public ScriptFilter( Reader in )
 	{
 		super(new PipedReader());
 		scriptInput = in;
@@ -110,6 +112,23 @@ public class BeanshellFilter
 		{}
 	}
 	
+	
+	/**
+	 * @return the engineName
+	 */
+	public String getEngineName()
+	{
+		return engineName;
+	}
+
+	/**
+	 * @param engineName the engineName to set
+	 */
+	public void setEngineName( String engineName )
+	{
+		this.engineName = engineName;
+	}
+
 	public int read()
 		throws IOException
 	{
@@ -156,6 +175,7 @@ public class BeanshellFilter
 				{
 					try
 					{
+						engine=engineManager.getEngineByName( engineName );
 						engine.eval(scriptInput, sc);
 					}
 					catch( Exception e )
