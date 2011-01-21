@@ -33,6 +33,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PushbackReader;
 import java.io.Reader;
+import java.util.HashMap;
+import java.util.Map;
 
 import com.trso.util.StringUtil;
 
@@ -40,38 +42,153 @@ import com.trso.util.StringUtil;
  * @author Preston Gilchrist
  *
  */
-public class BeanshellTemplateCodeGen
+public class ScriptTemplateCodeGenerator
 	extends FilterReader
 {
 	@SuppressWarnings("unused")
 	private static final String CLASS_ID = "$Id$";
 
-	public enum BeanshellTemplateReadState
+	public enum ScriptTemplateReadState
 	{
 		Output, // in normal output
 		Comment, // 
 		Expression, // <%= expression %>
 		Scriptlet, // <% code fragment %>
 	}
-	
-	private static boolean DEBUG = false;
-	private boolean escaped = false;
-	private boolean newline = false;
+
 	private static final int PUSHBACKBUFFER = 3;
-	private static final int MAXBSHLINESIZE = 2048;
-	private static final String scriptOutputObject = "this.interpreter";
+
+	private boolean DEBUG = false;
+	private boolean newline = false;
+	private int MAXBSHLINESIZE = 2048;
 	private int readCharCount = 0;
-	StringBuffer readBuffer;
-	PushbackReader pin;
-	BeanshellTemplateReadState readState = null;
+	private StringBuffer readBuffer;
+	private PushbackReader pin;
+	private ScriptTemplateReadState readState = null;
+
+	
+	private String scriptType = "js";
+	/**
+	 * @return the scriptOutputPrintOpen
+	 */
+	public String getScriptType()
+	{
+		return scriptType;
+	}
+
+	/**
+	 * @param scriptOutputPrintOpen the scriptOutputPrintOpen to set
+	 */
+	public void setScriptType( String scriptType )
+	{
+		this.scriptType = scriptType;
+		if( scriptType.equals( "bsh" ) )
+		{
+			setScriptOutputPrintOpen("this.interpreter.print( ");
+			setScriptOutputPrintStringQuotationOpen( "\"" );
+			setScriptOutputPrintStringQuotationClose( "\"" );
+			setScriptOutputPrintClose(" );\n");
+			Map<Character,String> newEscapeChars = new HashMap<Character,String>();
+			newEscapeChars.put( '\n', "\\n" );
+			newEscapeChars.put( '\r', "\\r" );
+			newEscapeChars.put( '"', "\\\"" );
+			newEscapeChars.put( '\\', "\\\\" );
+			setEscapeCharacters( newEscapeChars );
+		}
+	}
+	
+	private String scriptOutputPrintOpen = "this.interpreter.print( ";
+	/**
+	 * @return the scriptOutputPrintOpen
+	 */
+	public String getScriptOutputPrintOpen()
+	{
+		return scriptOutputPrintOpen;
+	}
+
+	/**
+	 * @param scriptOutputPrintOpen the scriptOutputPrintOpen to set
+	 */
+	public void setScriptOutputPrintOpen( String scriptOutputPrintOpen )
+	{
+		this.scriptOutputPrintOpen = scriptOutputPrintOpen;
+	}
+
+	private String scriptOutputPrintStringQuotationOpen = "\"";
+	/**
+	 * @return the scriptOutputPrintStringQuotationOpen
+	 */
+	public String getScriptOutputPrintStringQuotationOpen()
+	{
+		return scriptOutputPrintStringQuotationOpen;
+	}
+
+	/**
+	 * @param scriptOutputPrintStringQuotationOpen the scriptOutputPrintStringQuotationOpen to set
+	 */
+	public void setScriptOutputPrintStringQuotationOpen( String scriptOutputPrintStringQuotationOpen )
+	{
+		this.scriptOutputPrintStringQuotationOpen = scriptOutputPrintStringQuotationOpen;
+	}
+
+	private String scriptOutputPrintStringQuotationClose = "\"";
+	/**
+	 * @return the scriptOutputPrintStringQuotationClose
+	 */
+	public String getScriptOutputPrintStringQuotationClose()
+	{
+		return scriptOutputPrintStringQuotationClose;
+	}
+
+	/**
+	 * @param scriptOutputPrintStringQuotationClose the scriptOutputPrintStringQuotationClose to set
+	 */
+	public void setScriptOutputPrintStringQuotationClose( String scriptOutputPrintStringQuotationClose )
+	{
+		this.scriptOutputPrintStringQuotationClose = scriptOutputPrintStringQuotationClose;
+	}
+
+	private String scriptOutputPrintClose = " );\n";
+	/**
+	 * @return the scriptOutputPrintClose
+	 */
+	public String getScriptOutputPrintClose()
+	{
+		return scriptOutputPrintClose;
+	}
+
+	/**
+	 * @param scriptOutputPrintClose the scriptOutputPrintClose to set
+	 */
+	public void setScriptOutputPrintClose( String scriptOutputPrintClose )
+	{
+		this.scriptOutputPrintClose = scriptOutputPrintClose;
+	}
+
+	private Map<Character,String> escapeCharacters = new HashMap<Character,String>();
+	/**
+	 * @return the escapeCharacters
+	 */
+	public Map<Character, String> getEscapeCharacters()
+	{
+		return escapeCharacters;
+	}
+
+	/**
+	 * @param escapeCharacters the escapeCharacters to set
+	 */
+	public void setEscapeCharacters( Map<Character, String> escapeCharacters )
+	{
+		this.escapeCharacters = escapeCharacters;
+	}
 	
 
-	public BeanshellTemplateCodeGen( Reader in )
+	public ScriptTemplateCodeGenerator( Reader in )
 	{
 		this( new PushbackReader( in, PUSHBACKBUFFER ) );
 	}
 
-	public BeanshellTemplateCodeGen( PushbackReader in )
+	public ScriptTemplateCodeGenerator( PushbackReader in )
 	{
 		super(in);
 		pin = in;
@@ -93,7 +210,7 @@ public class BeanshellTemplateCodeGen
 				base = new InputStreamReader( System.in );
 			}
 		
-			BeanshellTemplateCodeGen btcg = new BeanshellTemplateCodeGen(base);
+			ScriptTemplateCodeGenerator btcg = new ScriptTemplateCodeGenerator(base);
 			for( int v = btcg.read(); v > -1 ; v = btcg.read() )
 			{
 				System.out.print((char)v);
@@ -161,48 +278,44 @@ public class BeanshellTemplateCodeGen
 				// If we were in the middle of an output operation, close the
 				// current
 				// print command and feed that out.
-				if (readState == BeanshellTemplateReadState.Output)
+				if (readState == ScriptTemplateReadState.Output)
 				{
 					closeOutputState(new StringBuffer());
 					return (StringUtil.popFirstChar(readBuffer));
 				}
 				return (-1);
 			}
-			// Handles converting newline and carriage returns into escaped
-			// characters for the prin
-			if (readState == BeanshellTemplateReadState.Output && (c == '\n' || c == '\r'))
+			// Handles converting specified characters into escaped
+			// characters for the printing
+			if (readState == ScriptTemplateReadState.Output && escapeCharacters.containsKey( c ) )
 			{
-				if (c == '\n')
-				{
-					readBuffer = new StringBuffer("n");
-				}
-				if (c == '\r')
-				{
-					readBuffer = new StringBuffer("r");
-				}
-				newline = true;
-				return ('\\');
+				readBuffer = new StringBuffer( escapeCharacters.get( c ) );
+				return (StringUtil.popFirstChar( readBuffer ) );
 			}
-			// Handle when we are inside of a BSH tag of some kind
-			if (readState != BeanshellTemplateReadState.Output && readState != null)
+			// Handle when we are inside of a Script tag of some kind
+			if (readState == ScriptTemplateReadState.Scriptlet || 
+				readState == ScriptTemplateReadState.Expression )
 			{
 				// we are inside of a tag
 				if (c == '%')
 				{
 					int next = in.read();
 					if (next == -1) return (c);
-					if (next == '>')
+					switch(next)
 					{
-						// close the tag operation
-						switch (readState)
-						{
-							case Expression:
-								readBuffer = new StringBuffer(");\n");
-								readState = null;
-								return (' ');
-						}
-						readState = null;
-						return ('\n');
+						// close the tag
+						case '>':
+							switch (readState)
+							{
+								case Expression:
+									readBuffer = new StringBuffer(scriptOutputPrintClose);
+									readState = null;
+									return ( StringUtil.popFirstChar( readBuffer ) );
+							}
+							readState = null;
+							return ('\n');
+						case '%':
+							return(next);
 					}
 				}
 				return (c);
@@ -224,7 +337,7 @@ public class BeanshellTemplateCodeGen
 						{
 							return (-1);
 						}
-						// It's starting to look like a BSH comment
+						// It's starting to look like a Script comment
 						else if (next == '-')
 						{
 							next = pin.read();
@@ -239,8 +352,8 @@ public class BeanshellTemplateCodeGen
 							}
 							// This is a comment.  Read all of the chars from the Reader
 							// until the comment is over and then return the next char
-							BeanshellTemplateReadState oldReadState = readState;
-							while (readState != BeanshellTemplateReadState.Comment)
+							ScriptTemplateReadState oldReadState = readState;
+							while (readState != ScriptTemplateReadState.Comment)
 							{
 								next = read();
 								if (next == -1)
@@ -256,12 +369,12 @@ public class BeanshellTemplateCodeGen
 						{
 							// This is an Expression
 							readBuffer = new StringBuffer();
-							if (readState == BeanshellTemplateReadState.Output)
+							if (readState == ScriptTemplateReadState.Output)
 							{
 								closeOutputState(readBuffer);
 							}
-							readState = BeanshellTemplateReadState.Expression;
-							readBuffer.append(scriptOutputObject + ".print( ");
+							readState = ScriptTemplateReadState.Expression;
+							readBuffer.append(scriptOutputPrintOpen);
 							return (StringUtil.popFirstChar(readBuffer));
 						}
 						else if (next == '%')
@@ -271,11 +384,11 @@ public class BeanshellTemplateCodeGen
 						}
 						else
 						{
-							if (readState == BeanshellTemplateReadState.Output)
+							if (readState == ScriptTemplateReadState.Output)
 							{
 								closeOutputState( new StringBuffer());
 							}
-							readState = BeanshellTemplateReadState.Scriptlet;							
+							readState = ScriptTemplateReadState.Scriptlet;							
 							return (read());
 						}
 					}
@@ -286,7 +399,7 @@ public class BeanshellTemplateCodeGen
 			// Handles breaking the print statements on line breaks for
 			// readability
 			// and breaking lines after they are getting too long
-			if ((readState == BeanshellTemplateReadState.Output && newline) || readCharCount > MAXBSHLINESIZE)
+			if ((readState == ScriptTemplateReadState.Output && newline) || readCharCount > MAXBSHLINESIZE)
 			{
 				closeOutputState(new StringBuffer());
 				openOutputState(readBuffer);
@@ -308,26 +421,15 @@ public class BeanshellTemplateCodeGen
 				// are not in a code snippet, therefore we must setup a print
 				pin.unread(c);
 				newline = false;
-				readBuffer = new StringBuffer(scriptOutputObject + ".print( \"");
-				readState = BeanshellTemplateReadState.Output;
+				readBuffer = new StringBuffer(scriptOutputPrintOpen + scriptOutputPrintStringQuotationOpen);
+				readState = ScriptTemplateReadState.Output;
 				return (StringUtil.popFirstChar(readBuffer));
-			}
-
-			if (readState == BeanshellTemplateReadState.Output && (c == '"' || c == '\\'))
-			{
-				if (!escaped)
-				{
-					escaped = true;
-					pin.unread(c);
-					return ('\\');
-				}
-				escaped = false;
 			}
 			return (c);
 		}
 		finally
 		{
-			if (readState == BeanshellTemplateReadState.Output)
+			if (readState == ScriptTemplateReadState.Output)
 			{
 				readCharCount++;
 			}
@@ -337,15 +439,15 @@ public class BeanshellTemplateCodeGen
 	private void closeOutputState(StringBuffer sb)
 	{
 		readState = null;
-		readBuffer.append( "\" );\n" );
+		readBuffer.append( scriptOutputPrintStringQuotationClose );
+		readBuffer.append( scriptOutputPrintClose );
 	}
 	private void openOutputState( StringBuffer sb )
 	{
-		readState = BeanshellTemplateReadState.Output;
+		readState = ScriptTemplateReadState.Output;
 		readCharCount = 0;
 		newline = false;
-		escaped = false;
-		readBuffer.append( scriptOutputObject );
-		readBuffer.append( ".print( \"" );
+		readBuffer.append( scriptOutputPrintOpen );
+		readBuffer.append( scriptOutputPrintStringQuotationOpen );
 	}
 }

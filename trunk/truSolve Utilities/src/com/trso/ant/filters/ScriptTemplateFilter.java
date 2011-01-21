@@ -36,14 +36,13 @@ import javax.script.ScriptContext;
 
 import org.apache.tools.ant.filters.BaseFilterReader;
 
-import com.trso.io.BeanshellFilter;
-import com.trso.io.BeanshellTemplateCodeGen;
+import com.trso.io.ScriptFilter;
 
 /**
  * @author Preston Gilchrist
  *
  */
-public class BeanshellTemplateFilter
+public class ScriptTemplateFilter
 	extends BaseFilterReader
 {
 	@SuppressWarnings("unused")
@@ -51,9 +50,9 @@ public class BeanshellTemplateFilter
 
 	private boolean initialized = false;
 	
-	public BeanshellTemplateFilter( Reader in )
+	public ScriptTemplateFilter( Reader in )
 	{
-		super(new BeanshellFilter(new BeanshellTemplateCodeGen(in)));
+		super(new ScriptFilter(new com.trso.io.ScriptTemplateCodeGenerator(in)));
 	}
 	
 	public int read()
@@ -67,8 +66,8 @@ public class BeanshellTemplateFilter
 	}
 	public void initialize()
 	{
-		BeanshellFilter bshf = (BeanshellFilter)in;
-		bshf.setAttribute("project", getProject(), ScriptContext.GLOBAL_SCOPE);
+		ScriptFilter sf = (ScriptFilter)in;
+		sf.setAttribute("project", getProject(), ScriptContext.GLOBAL_SCOPE);
 		initialized=true;
 	}
 }

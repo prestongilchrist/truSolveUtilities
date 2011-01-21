@@ -31,12 +31,24 @@
  -->
 <project name="truSolveUtils" default="build" basedir=".">
 	<property name="BuildVersion" value="$Revsion$"/>
-	<target name="build">
+	<property name="build" value="bin"/>
+	<property name="src" value="src"/>
+	
+	
+	<target name="build" depends="javadoc,compile">
 		
 	</target>
 	<target name="compile">
-		<javac>
-			
-		</javac>
+		<javac srcdir="${src}" destdir="${build}" target="1.6" debug="on"/>
+	</target>
+	
+	<target name="javadoc">
+		<javadoc packagenames="*" sourcepath="src"
+			defaultexcludes="yes" destdir="docs/api" author="true" version="true"
+			use="true" windowtitle="truSolve Utilities">
+			<doctitle><![CDATA[<h1>truSolve Utilities</h1>]]></doctitle>
+			<bottom><![CDATA[<i>Copyright &#169; 2011 truSolve.com All Rights Reserved.</i>]]></bottom>
+			<tag name="todo" scope="all" description="To do:"/>
+		</javadoc>
 	</target>
 </project>
