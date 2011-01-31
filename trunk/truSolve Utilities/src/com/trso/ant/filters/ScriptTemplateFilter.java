@@ -51,6 +51,7 @@ public class ScriptTemplateFilter
 	private boolean initialized = false;
 	
 	public ScriptTemplateFilter( Reader in )
+		throws IOException
 	{
 		super(new ScriptFilter(new com.trso.io.ScriptTemplateCodeGenerator(in)));
 	}
