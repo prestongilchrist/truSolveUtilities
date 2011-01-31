@@ -32,7 +32,7 @@ public class TSFactor
 	private int credentialSize = 8;
 	private int frequency = 60000; // the milisecond frequency
 	private int window = 5; // the number of value differences winthin the window of validation error
-	private byte[] nonce;
+	private byte[] seed;
 
 	/**
 	 * @param args
@@ -59,7 +59,7 @@ public class TSFactor
 	
 	public TSFactor( byte[] nonce)
 	{
-		this.nonce = nonce;
+		this.seed = nonce;
 	}
 
 	public boolean validateCredential( String password )
@@ -118,7 +118,7 @@ public class TSFactor
 		throws NoSuchAlgorithmException
 	{
 		MessageDigest md = MessageDigest.getInstance( hashAlgorithm );
-		md.update( nonce );
+		md.update( seed );
 		md.update( Long.toString( timeStamp ).getBytes() );
 		return(md.digest());
 	}
