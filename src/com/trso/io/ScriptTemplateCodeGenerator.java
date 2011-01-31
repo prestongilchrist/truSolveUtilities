@@ -60,14 +60,14 @@ public class ScriptTemplateCodeGenerator
 
 	private boolean DEBUG = false;
 	private boolean newline = false;
-	private int MAXBSHLINESIZE = 2048;
+	private int maxScriptLineSize = 2048;
 	private int readCharCount = 0;
 	private StringBuffer readBuffer;
 	private PushbackReader pin;
 	private ScriptTemplateReadState readState = null;
 
 	
-	private String scriptType = "js";
+	private String scriptType = "bsh";
 	/**
 	 * @return the scriptOutputPrintOpen
 	 */
@@ -83,6 +83,23 @@ public class ScriptTemplateCodeGenerator
 	{
 		this.scriptType = scriptType;
 		if( scriptType.equals( "bsh" ) )
+		{
+			setScriptOutputPrintOpen("this.interpreter.print( ");
+			setScriptOutputPrintStringQuotationOpen( "\"" );
+			setScriptOutputPrintStringQuotationClose( "\"" );
+			setScriptOutputPrintClose(" );\n");
+			Map<Character,String> newEscapeChars = new HashMap<Character,String>();
+			newEscapeChars.put( '\n', "\\n" );
+			newEscapeChars.put( '\r', "\\r" );
+			newEscapeChars.put( '"', "\\\"" );
+			newEscapeChars.put( '\\', "\\\\" );
+			setEscapeCharacters( newEscapeChars );
+			Map<Character,String> newNewLineTrigger = new HashMap<Character,String>();
+			newNewLineTrigger.put( '\n', "\\n" );
+			newNewLineTrigger.put( '\r', "\\r" );
+			setNewlineTriggerCharacters( newNewLineTrigger );
+		}
+		else if( scriptType.equals( "js" ) )
 		{
 			setScriptOutputPrintOpen("this.interpreter.print( ");
 			setScriptOutputPrintStringQuotationOpen( "\"" );
@@ -181,7 +198,23 @@ public class ScriptTemplateCodeGenerator
 	{
 		this.escapeCharacters = escapeCharacters;
 	}
-	
+
+	private Map<Character,String> newlineTriggerCharacters = new HashMap<Character,String>();
+	/**
+	 * @return the newlineTriggerCharacters
+	 */
+	public Map<Character, String> getNewlineTriggerCharacters()
+	{
+		return newlineTriggerCharacters;
+	}
+
+	/**
+	 * @param newlineTriggerCharacters the newlineTriggerCharacters to set
+	 */
+	public void setNewlineTriggerCharacters( Map<Character, String> newlineTriggerCharacters )
+	{
+		this.newlineTriggerCharacters = newlineTriggerCharacters;
+	}
 
 	public ScriptTemplateCodeGenerator( Reader in )
 	{
@@ -192,6 +225,7 @@ public class ScriptTemplateCodeGenerator
 	{
 		super(in);
 		pin = in;
+		setScriptType( scriptType );
 	}
 	/**
 	 * @param args
@@ -285,16 +319,22 @@ public class ScriptTemplateCodeGenerator
 				}
 				return (-1);
 			}
+			// Certain characters should trigger a new print line for readability
+			if (readState == ScriptTemplateReadState.Output && newlineTriggerCharacters.containsKey( Character.valueOf( (char)c ) ) )
+			{
+				newline = true;
+			}
 			// Handles converting specified characters into escaped
 			// characters for the printing
-			if (readState == ScriptTemplateReadState.Output && escapeCharacters.containsKey( c ) )
+			if (readState == ScriptTemplateReadState.Output && escapeCharacters.containsKey( Character.valueOf( (char)c ) ) )
 			{
-				readBuffer = new StringBuffer( escapeCharacters.get( c ) );
+				readBuffer = new StringBuffer( escapeCharacters.get( Character.valueOf( (char)c ) ) );
 				return (StringUtil.popFirstChar( readBuffer ) );
 			}
 			// Handle when we are inside of a Script tag of some kind
 			if (readState == ScriptTemplateReadState.Scriptlet || 
-				readState == ScriptTemplateReadState.Expression )
+				readState == ScriptTemplateReadState.Expression ||
+				readState == ScriptTemplateReadState.Comment )
 			{
 				// we are inside of a tag
 				if (c == '%')
@@ -352,8 +392,8 @@ public class ScriptTemplateCodeGenerator
 							}
 							// This is a comment.  Read all of the chars from the Reader
 							// until the comment is over and then return the next char
-							ScriptTemplateReadState oldReadState = readState;
-							while (readState != ScriptTemplateReadState.Comment)
+							char[] b = new char[]{ 'x','x' };
+							while ( ! ( b[0] == '%' && b[1] == '>' ) )
 							{
 								next = read();
 								if (next == -1)
@@ -361,9 +401,10 @@ public class ScriptTemplateCodeGenerator
 									readState = null;
 									return (-1);
 								}
+								b[0] = b[1];
+								b[1] = (char)next;
 							}
-							readState = oldReadState;
-							return (next);
+							return (read());
 						}
 						else if (next == '=')
 						{
@@ -399,7 +440,7 @@ public class ScriptTemplateCodeGenerator
 			// Handles breaking the print statements on line breaks for
 			// readability
 			// and breaking lines after they are getting too long
-			if ((readState == ScriptTemplateReadState.Output && newline) || readCharCount > MAXBSHLINESIZE)
+			if ((readState == ScriptTemplateReadState.Output && newline) || readCharCount > maxScriptLineSize)
 			{
 				closeOutputState(new StringBuffer());
 				openOutputState(readBuffer);

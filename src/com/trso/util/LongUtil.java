@@ -29,6 +29,8 @@
 package com.trso.util;
 
 /**
+ * This class provides some simple utilities for use in manipulation of long values.  Most methods will be static.
+ * 
  * @author pwg
  *
  */
@@ -39,8 +41,10 @@ public class LongUtil
 
 	
 	/**
-	 * @param data
-	 * @return
+	 * Breaks a long value down into a byte array.
+	 * 
+	 * @param data a long value that will be broken down into a byte array.
+	 * @return a byte array that contains the byte decomposition of the provided long.
 	 */
 	public static byte[] asByteArray( long data )
 	{
@@ -58,14 +62,16 @@ public class LongUtil
 		);
 	}
 	/**
-	 * @param data8
-	 * @param data7
-	 * @param data6
-	 * @param data5
-	 * @param data4
-	 * @param data3
-	 * @param data2
-	 * @param data1
+	 * Convert 8 bytes to a corresponding long.
+	 * 
+	 * @param data8 Most significant byte
+	 * @param data7 byte 7
+	 * @param data6 byte 6
+	 * @param data5 byte 5
+	 * @param data4 byte 4
+	 * @param data3 byte 3
+	 * @param data2 byte 2
+	 * @param data1 Least significant byte
 	 * @return
 	 */
 	public static long fromBytes( byte data8, byte data7, byte data6, byte data5, byte data4, byte data3, byte data2, byte data1 )
@@ -85,6 +91,31 @@ public class LongUtil
 		v &= data2;
 		v = v << 8;
 		v &= data1;
+		return( v );
+	}
+	
+	/**
+	 * Create a long value from a corresponding byte array.  The 7th byte is the most significant byte and the 0th is the least significant.
+	 * @param byteArray
+	 * @return a long value
+	 */
+	public static long fromBytes( byte[] byteArray )
+	{
+		long v = byteArray[7];
+		v = v << 8;
+		v &= byteArray[6];
+		v = v << 8;
+		v &= byteArray[5];
+		v = v << 8;
+		v &= byteArray[4];
+		v = v << 8;
+		v &= byteArray[3];
+		v = v << 8;
+		v &= byteArray[2];
+		v = v << 8;
+		v &= byteArray[1];
+		v = v << 8;
+		v &= byteArray[0];
 		return( v );
 	}
 }

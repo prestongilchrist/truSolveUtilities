@@ -59,7 +59,7 @@ public class ScriptFilter
 	private static final String CLASS_ID = "$Id$";
 	private ScriptEngineManager engineManager = new ScriptEngineManager();
 	private ScriptEngine engine = null;
-	private String engineName = "js";
+	private String engineName = "bsh";
 	private ScriptContext sc = new SimpleScriptContext();
 	private PipedWriter shellWriter = new PipedWriter();
 	private boolean init = false;
@@ -99,17 +99,13 @@ public class ScriptFilter
 	}
 	
 	public ScriptFilter( Reader in )
+		throws IOException
 	{
 		super(new PipedReader());
 		scriptInput = in;
-		try
-		{
-			shellWriter.connect((PipedReader)this.in);
-			sc.setWriter(shellWriter);
-			sc.setBindings(new SimpleBindings(), ScriptContext.GLOBAL_SCOPE);
-		}
-		catch( Exception e )
-		{}
+		shellWriter.connect((PipedReader)this.in);
+		sc.setWriter(shellWriter);
+		sc.setBindings(new SimpleBindings(), ScriptContext.GLOBAL_SCOPE);
 	}
 	
 	
@@ -143,11 +139,12 @@ public class ScriptFilter
 				throw( new IOException( "Script Exception", e ) );
 			}
 		}
+		int c = in.read();
 		if( scriptException != null )
 		{
 			throw( new IOException( "Script Exception", scriptException ) );
 		}
-		return(in.read());
+		return( c );
 	}
 	
 	/* Methods to access the ScriptContext object */
@@ -176,7 +173,15 @@ public class ScriptFilter
 					try
 					{
 						engine=engineManager.getEngineByName( engineName );
-						engine.eval(scriptInput, sc);
+						if( engine == null )
+						{
+							scriptException = new Exception( "Script engine " + engineName + " not found." );
+							throw( scriptException );
+						}
+						else
+						{
+							engine.eval(scriptInput, sc);
+						}
 					}
 					catch( Exception e )
 					{
