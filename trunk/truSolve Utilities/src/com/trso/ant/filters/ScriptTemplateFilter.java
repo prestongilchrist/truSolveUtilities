@@ -34,17 +34,22 @@ import java.io.Reader;
 
 import javax.script.ScriptContext;
 
-import org.apache.tools.ant.filters.BaseFilterReader;
+import org.apache.tools.ant.filters.BaseParamFilterReader;
+import org.apache.tools.ant.types.Parameter;
 
 import com.trso.io.ScriptFilter;
+import com.trso.io.ScriptTemplateCodeGenerator;
 
 /**
  * @author Preston Gilchrist
  *
  */
 public class ScriptTemplateFilter
-	extends BaseFilterReader
+	extends BaseParamFilterReader
 {
+	private ScriptTemplateCodeGenerator stcg;
+	private ScriptFilter sf;
+	
 	@SuppressWarnings("unused")
 	private static final String CLASS_ID = "$Id$";
 
@@ -53,7 +58,21 @@ public class ScriptTemplateFilter
 	public ScriptTemplateFilter( Reader in )
 		throws IOException
 	{
-		super(new ScriptFilter(new com.trso.io.ScriptTemplateCodeGenerator(in)));
+		this( new ScriptTemplateCodeGenerator(in) );
+//		super(new ScriptFilter(new ScriptTemplateCodeGenerator(in)));
+	}
+	
+	private ScriptTemplateFilter( ScriptTemplateCodeGenerator stcg )
+		throws IOException
+	{
+		this( new ScriptFilter( stcg ) );
+		this.stcg = stcg;
+	}
+
+	private ScriptTemplateFilter( ScriptFilter sf )
+	{
+		super( sf );
+		this.sf = sf;
 	}
 	
 	public int read()
@@ -67,8 +86,19 @@ public class ScriptTemplateFilter
 	}
 	public void initialize()
 	{
-		ScriptFilter sf = (ScriptFilter)in;
 		sf.setAttribute("project", getProject(), ScriptContext.GLOBAL_SCOPE);
+		for( Parameter p : this.getParameters() )
+		{
+			if( p.getName().equals( "scriptType" ) )
+			{
+				stcg.setScriptType( p.getValue() );
+				sf.setEngineName( p.getValue() );
+			}
+			else if( ! p.getName().equals( "project" ) )
+			{
+				sf.setAttribute( p.getName(), p.getValue(), ( p.getType().equals( "global" ) ? ScriptContext.GLOBAL_SCOPE : ScriptContext.ENGINE_SCOPE ) );
+			}
+		}
 		initialized=true;
 	}
 }
