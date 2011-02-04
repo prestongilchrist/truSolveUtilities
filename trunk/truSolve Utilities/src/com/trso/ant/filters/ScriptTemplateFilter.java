@@ -59,7 +59,6 @@ public class ScriptTemplateFilter
 		throws IOException
 	{
 		this( new ScriptTemplateCodeGenerator(in) );
-//		super(new ScriptFilter(new ScriptTemplateCodeGenerator(in)));
 	}
 	
 	private ScriptTemplateFilter( ScriptTemplateCodeGenerator stcg )
