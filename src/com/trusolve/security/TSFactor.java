@@ -4,7 +4,7 @@
  *
  *
  */
-package com.trso.security;
+package com.trusolve.security;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
