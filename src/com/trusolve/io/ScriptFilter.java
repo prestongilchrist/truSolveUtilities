@@ -41,6 +41,7 @@ import java.io.InputStreamReader;
 import java.io.PipedReader;
 import java.io.PipedWriter;
 import java.io.Reader;
+import java.util.Map;
 
 import javax.script.ScriptContext;
 import javax.script.ScriptEngine;
@@ -57,7 +58,7 @@ public class ScriptFilter
 {
 	@SuppressWarnings("unused")
 	private static final String CLASS_ID = "$Id$";
-	private ScriptEngineManager engineManager = new ScriptEngineManager();
+	private ScriptEngineManager engineManager = new ScriptEngineManager(ScriptFilter.class.getClassLoader());
 	private ScriptEngine engine = null;
 	private String engineName = "bsh";
 	private ScriptContext sc = new SimpleScriptContext();
@@ -136,13 +137,21 @@ public class ScriptFilter
 			}
 			catch( Exception e )
 			{
-				throw( new IOException( "Script Exception", e ) );
+				//throw( new IOException( "Script Exception", e ) );
+				//To work with Java 5
+				IOException e2 = new IOException("Script Exception"); 
+				e2.initCause(e);
+				throw e2;
 			}
 		}
 		int c = in.read();
 		if( scriptException != null )
 		{
-			throw( new IOException( "Script Exception", scriptException ) );
+			//throw( new IOException( "Script Exception", scriptException ) );
+			//To work with Java 5
+			IOException e2 = new IOException("Script Exception"); 
+			e2.initCause(scriptException);
+			throw e2;
 		}
 		return( c );
 	}
@@ -159,6 +168,10 @@ public class ScriptFilter
 	public void setAttribute(String name, Object value, int scope)
 	{
 		sc.setAttribute(name, value, scope);
+	}
+	public void putAll( Map<? extends String,? extends Object> m )
+	{
+		sc.getBindings(ScriptContext.GLOBAL_SCOPE).putAll(m);
 	}
 	
 	private void initialize()

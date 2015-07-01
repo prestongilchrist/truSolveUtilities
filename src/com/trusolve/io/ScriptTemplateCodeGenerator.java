@@ -62,7 +62,7 @@ public class ScriptTemplateCodeGenerator
 	private boolean newline = false;
 	private int maxScriptLineSize = 2048;
 	private int readCharCount = 0;
-	private StringBuffer readBuffer;
+	private StringBuffer readBuffer = new StringBuffer();
 	private PushbackReader pin;
 	private ScriptTemplateReadState readState = null;
 
@@ -312,9 +312,14 @@ public class ScriptTemplateCodeGenerator
 				// If we were in the middle of an output operation, close the
 				// current
 				// print command and feed that out.
-				if (readState == ScriptTemplateReadState.Output)
+				if (readState == ScriptTemplateReadState.Output )
 				{
-					closeOutputState(new StringBuffer());
+					closeOutputState();
+					return (StringUtil.popFirstChar(readBuffer));
+				}
+				if (readState == ScriptTemplateReadState.Expression )
+				{
+					closeExpressionState();
 					return (StringUtil.popFirstChar(readBuffer));
 				}
 				return (-1);
@@ -360,11 +365,12 @@ public class ScriptTemplateCodeGenerator
 				}
 				return (c);
 			}
+			// We are not in a tag.  Only no state or Output states make it here.
 			if (c == '<')
 			{
 				// this may be the start of a tag
 				int next = pin.read();
-				// If EOF is reach, then the < is part of the characters
+				// If EOF is reached, then the < is part of the characters
 				if (next != -1)
 				{
 					if (next == '%')
@@ -395,7 +401,7 @@ public class ScriptTemplateCodeGenerator
 							char[] b = new char[]{ 'x','x' };
 							while ( ! ( b[0] == '%' && b[1] == '>' ) )
 							{
-								next = read();
+								next = pin.read();
 								if (next == -1)
 								{
 									readState = null;
@@ -409,13 +415,7 @@ public class ScriptTemplateCodeGenerator
 						else if (next == '=')
 						{
 							// This is an Expression
-							readBuffer = new StringBuffer();
-							if (readState == ScriptTemplateReadState.Output)
-							{
-								closeOutputState(readBuffer);
-							}
-							readState = ScriptTemplateReadState.Expression;
-							readBuffer.append(scriptOutputPrintOpen);
+							openExpressionState();
 							return (StringUtil.popFirstChar(readBuffer));
 						}
 						else if (next == '%')
@@ -427,7 +427,7 @@ public class ScriptTemplateCodeGenerator
 						{
 							if (readState == ScriptTemplateReadState.Output)
 							{
-								closeOutputState( new StringBuffer());
+								closeOutputState();
 							}
 							readState = ScriptTemplateReadState.Scriptlet;							
 							return (read());
@@ -442,8 +442,8 @@ public class ScriptTemplateCodeGenerator
 			// and breaking lines after they are getting too long
 			if ((readState == ScriptTemplateReadState.Output && newline) || readCharCount > maxScriptLineSize)
 			{
-				closeOutputState(new StringBuffer());
-				openOutputState(readBuffer);
+				closeOutputState();
+				openOutputState();
 				if( c == '<' )
 				{
 					readBuffer.append((char)c);
@@ -456,14 +456,12 @@ public class ScriptTemplateCodeGenerator
 			}
 			if (readState == null)
 			{
-				// We have no read state which means we are at the begging of
+				// We have no read state which means we are at the begining of
 				// the document
 				// or just got out of another directive and
 				// are not in a code snippet, therefore we must setup a print
 				pin.unread(c);
-				newline = false;
-				readBuffer = new StringBuffer(scriptOutputPrintOpen + scriptOutputPrintStringQuotationOpen);
-				readState = ScriptTemplateReadState.Output;
+				openOutputState();
 				return (StringUtil.popFirstChar(readBuffer));
 			}
 			return (c);
@@ -477,18 +475,34 @@ public class ScriptTemplateCodeGenerator
 		}
 	}
 	
-	private void closeOutputState(StringBuffer sb)
-	{
-		readState = null;
-		readBuffer.append( scriptOutputPrintStringQuotationClose );
-		readBuffer.append( scriptOutputPrintClose );
-	}
-	private void openOutputState( StringBuffer sb )
+	private void openOutputState()
 	{
 		readState = ScriptTemplateReadState.Output;
 		readCharCount = 0;
 		newline = false;
 		readBuffer.append( scriptOutputPrintOpen );
 		readBuffer.append( scriptOutputPrintStringQuotationOpen );
+	}
+	private void closeOutputState()
+	{
+		readState = null;
+		readBuffer.append( scriptOutputPrintStringQuotationClose );
+		readBuffer.append( scriptOutputPrintClose );
+	}
+	private void openExpressionState()
+	{
+		if (readState == ScriptTemplateReadState.Output)
+		{
+			closeOutputState();
+		}
+		readCharCount = 0;
+		newline = false;
+		readState = ScriptTemplateReadState.Expression;
+		readBuffer.append( scriptOutputPrintOpen );
+	}
+	private void closeExpressionState()
+	{
+		readState = null;
+		readBuffer.append( scriptOutputPrintClose );
 	}
 }

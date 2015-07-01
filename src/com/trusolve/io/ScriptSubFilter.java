@@ -202,7 +202,11 @@ public class ScriptSubFilter
 		int ch;
 		if( scriptException != null )
 		{
-			throw( new IOException("Script Error", scriptException) );
+			//throw( new IOException("Script Error", scriptException) );
+			//To work with Java 5
+			IOException e2 = new IOException("Some message"); 
+			e2.initCause(scriptException);
+			throw e2; 
 		}
 		if (readBuffer != null && readBuffer.length() > 0)
 		{

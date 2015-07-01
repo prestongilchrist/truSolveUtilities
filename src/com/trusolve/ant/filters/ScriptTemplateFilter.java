@@ -31,6 +31,7 @@ package com.trusolve.ant.filters;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.util.Map;
 
 import javax.script.ScriptContext;
 
@@ -92,6 +93,14 @@ public class ScriptTemplateFilter
 			{
 				stcg.setScriptType( p.getValue() );
 				sf.setEngineName( p.getValue() );
+			}
+			else if( p.getName().equals("loadBindingsRef") )
+			{
+				Object o = getProject().getReference(p.getValue());
+				if( o instanceof Map<?,?> )
+				{
+					sf.putAll((Map<String,Object>)o);
+				}
 			}
 			else if( ! p.getName().equals( "project" ) )
 			{
