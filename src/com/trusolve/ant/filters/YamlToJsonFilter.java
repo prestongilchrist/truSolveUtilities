@@ -49,9 +49,6 @@ import com.trusolve.json.YamlToJson;
 public class YamlToJsonFilter
 	extends BaseParamFilterReader
 {
-	private Reader in = null;
-	private boolean documentRead = false;
-	private Reader json = null;
 	
 	@SuppressWarnings("unused")
 	private static final String CLASS_ID = "$Id$";
