@@ -4,10 +4,12 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +33,7 @@ public class JsonDereferencer
 	
 	private JsonNode rootNode;
 	private URL rootContext;
+	private Map<URL,JsonNode> dependencies = new HashMap<URL,JsonNode>();
 	
 	public static void main(String[] args)
 	{
@@ -120,8 +123,14 @@ public class JsonDereferencer
 	{
 		return dereference(this.rootNode, this.rootContext);
 	}
-	
+
 	private JsonNode dereference( JsonNode o, URL context )
+		throws JsonProcessingException, IOException, URISyntaxException
+	{
+		return dereference(o, context, null);
+	}
+	
+	private JsonNode dereference( JsonNode o, URL context, JsonNode importLocalRefs )
 		throws JsonProcessingException, IOException, URISyntaxException
 	{
 		if( o instanceof ObjectNode )
@@ -134,7 +143,7 @@ public class JsonDereferencer
 				Map.Entry<String,JsonNode> e = i.next();
 				JsonNode valueObject = e.getValue();
 				System.out.println( e.getKey() + ":" + e.getValue() );
-				JsonNode d = dereference(e.getValue(), context);
+				JsonNode d = dereference(e.getValue(), context, importLocalRefs);
 				if( valueObject != d )
 				{
 					jo.replace(e.getKey(), d );
@@ -143,46 +152,73 @@ public class JsonDereferencer
 			
 			// then check is we have a reference here that we need to handle
 			JsonNode ref = jo.get("$ref");
-			if( ref != null )
+			if( ref != null && jo.remove("$refIgnore") == null )
 			{
 				List<String> refs;
-				
+					
+				// Get the traditional single reference
 				if( ref.isTextual() )
 				{
 					refs = new ArrayList<String>();
 					refs.add(ref.asText());
 				}
+				// Get a customized array reference (requires a merge)
 				else if( ref.isArray() )
 				{
 					refs = getStringList(ref);
 					if( refs == null )
 					{
-						refs = new ArrayList<String>();
+						return(o);
 					}
 				}
 				else
 				{
+					// If refs is not defined
 					return o;
 				}
+				
+				// Begin Processing the references
 				for(String refHref : refs)
 				{
-					if( ! dereferenceLocalRefs && refHref != null && refHref.startsWith("#") )
+					if( refHref != null && refHref.startsWith("#") )
 					{
-						continue;
+						if( importLocalRefs != null && refHref.length() > 2 )
+						{
+							addLocalReference( context, importLocalRefs, refHref.substring(1) );
+							return o;
+						}
+						if( refs.size() == 1 && ! dereferenceLocalRefs )
+						{
+							return o;
+						}
 					}
-					URL loadLocation = new URL(context, ref.asText() );
+					// Remove the reference control variables from the resulting JSON document
+					jo.remove("$ref");
+					JsonNode refDeep = jo.remove("$refDeep");
+					JsonNode refLocalize = jo.remove("$refLocalize");
 
-					JsonNode refJson = new ObjectMapper().readTree(loadLocation);
-					// Dereference the existing document
-					refJson = dereference(refJson, loadLocation);
-					URI loadLocationURI = loadLocation.toURI();
-					String fragment = loadLocationURI.getFragment();
+					URL loadLocation = new URL(context, ref.asText() );
+					
+					JsonNode refJson = getJsonFromCache(loadLocation);
+					if( refJson == null )
+					{
+						refJson = new ObjectMapper().readTree(loadLocation);
+						// Dereference the existing document
+						refJson = dereference(refJson, loadLocation, refJson);
+						this.dependencies.put(loadLocation, refJson);
+					}
+					
+					String fragment = loadLocation.toURI().getFragment();
+					
+					if( refLocalize != null )
+					{
+						
+					}
 					if( fragment != null && fragment.length() > 0 )
 					{
 						refJson = refJson.at(fragment);
 					}
-					jo.remove("$ref");
-					JsonNode refDeep = jo.remove("$refDeep");
+					
 
 					if( jo.size() == 0 || refJson.isValueNode() || refJson.isArray() )
 					{
@@ -205,7 +241,7 @@ public class JsonDereferencer
 			for( int i = 0 ; i < ja.size() ; i++ )
 			{
 				JsonNode t = ja.get(i); 
-				JsonNode d = dereference(t, context);
+				JsonNode d = dereference(t, context, importLocalRefs);
 				if( t != d )
 				{
 					ja.remove(i);
@@ -270,5 +306,91 @@ public class JsonDereferencer
 			}
 		}
 		return r;
+	}
+	private JsonNode getJsonFromCache(URL url)
+	{
+		if( url == null)
+		{
+			return null;
+		}
+		for( Map.Entry<URL, JsonNode> e : this.dependencies.entrySet() )
+		{
+			if( url.sameFile(e.getKey()))
+			{
+				return(e.getValue());
+			}
+		}
+		return null;
+	}
+	
+	private void addLocalReference( URL context,  JsonNode sourceDocument, String jsonPath )
+	{
+		String fragment = "#" + jsonPath;
+		JsonNode refJson = sourceDocument.at(jsonPath);
+		// only attempt to add to the core document if the pointer exists in the target document
+		// the root node is an object and the node doesn't already exist in the target document
+		if( refJson != null && this.rootNode.isObject() && this.rootNode.at(jsonPath).isMissingNode() )
+		{
+			ObjectNode addPoint = (ObjectNode)this.rootNode;
+			
+			StringBuffer jsonPathLocation = new StringBuffer();
+			
+			for( String nodeName : jsonPath.substring(1).split("/") )
+			{
+				jsonPathLocation.append("/");
+				jsonPathLocation.append(nodeName);
+				
+				JsonNode current = sourceDocument.at(jsonPathLocation.toString());
+				JsonNode target = addPoint.get(nodeName);
+				
+				if( current == null )
+				{
+					LOGGER.error("Unable to merge undefined reference " + context + fragment );
+					break;
+				}
+				if( target != null )
+				{
+					if( target == current )
+					{
+						break;
+					}
+					if( target.getNodeType() == current.getNodeType() )
+					{
+						if( target.isObject() )
+						{
+							addPoint = (ObjectNode)target;
+							continue;
+						}
+						else
+						{
+							LOGGER.error("Refusing to merge non object node types " + context + fragment );
+							break;
+						}
+					}
+					else
+					{
+						LOGGER.error("Refusing to merge different reference types at pointer " + context + fragment );
+						break;
+					}
+				}
+				if( current == refJson )
+				{
+					addPoint.set(nodeName, refJson);
+				}
+				else
+				{
+					if( current.isObject() )
+					{
+						addPoint = addPoint.putObject(nodeName);
+					}
+					else
+					{
+						LOGGER.warn("Reached a non object in JSON Point reference " + context + fragment );
+						addPoint.set(nodeName, current);
+						break;
+					}
+				}
+			}
+		}
 	}
 }
