@@ -142,7 +142,7 @@ public class JsonDereferencer
 			{
 				Map.Entry<String,JsonNode> e = i.next();
 				JsonNode valueObject = e.getValue();
-				System.out.println( e.getKey() + ":" + e.getValue() );
+				LOGGER.debug( "Processing node for dereference: " + e.getKey() + ":" + e.getValue() );
 				JsonNode d = dereference(e.getValue(), context, importLocalRefs);
 				if( valueObject != d )
 				{
@@ -152,13 +152,16 @@ public class JsonDereferencer
 			
 			// then check is we have a reference here that we need to handle
 			JsonNode ref = jo.get("$ref");
-			if( ref != null && jo.remove("$refIgnore") == null )
+			JsonNode refIgnore = jo.remove("$refIgnore");
+			LOGGER.debug("Checking for reference.  ref=" + ref + " / refIgnore=" + refIgnore );
+			if( ref != null && refIgnore == null )
 			{
 				List<String> refs;
 					
 				// Get the traditional single reference
 				if( ref.isTextual() )
 				{
+					LOGGER.debug("Reference is a single value of " + ref.asText());
 					refs = new ArrayList<String>();
 					refs.add(ref.asText());
 				}
@@ -166,6 +169,7 @@ public class JsonDereferencer
 				else if( ref.isArray() )
 				{
 					refs = getStringList(ref);
+					LOGGER.debug("Reference is an array " + refs );
 					if( refs == null )
 					{
 						return(o);
@@ -174,62 +178,78 @@ public class JsonDereferencer
 				else
 				{
 					// If refs is not defined
+					LOGGER.warn("Found a ref entry, but the value wasn't valid: " + o);
 					return o;
 				}
 				
 				// Begin Processing the references
 				for(String refHref : refs)
 				{
+					LOGGER.debug("Processing reference for " + refHref);
 					if( refHref != null && refHref.startsWith("#") )
 					{
+						LOGGER.debug("Reference is on the document currently being processed");
 						if( importLocalRefs != null && refHref.length() > 2 )
 						{
+							LOGGER.debug("Local reference is being imported into the root document");
 							addLocalReference( context, importLocalRefs, refHref.substring(1) );
 							return o;
 						}
 						if( refs.size() == 1 && ! dereferenceLocalRefs )
 						{
+							// If there is more than 1 reference we must ALWAYS dereference with a merge operation
+							LOGGER.debug("This is a single local reference and dereference locals is off, including as is");
 							return o;
 						}
 					}
 					// Remove the reference control variables from the resulting JSON document
 					jo.remove("$ref");
+					// remove the refDeep control variable.
+					// Variable set: the system will merge all JSON objects and their descendants
+					// Variable unset: the system will merge only the JSON name/value pair within the ref
 					JsonNode refDeep = jo.remove("$refDeep");
-					JsonNode refLocalize = jo.remove("$refLocalize");
-
+					LOGGER.debug("refDeep: " + refDeep);
+					
 					URL loadLocation = new URL(context, ref.asText() );
 					
+					LOGGER.debug("Reference load location is=" + loadLocation);
 					JsonNode refJson = getJsonFromCache(loadLocation);
 					if( refJson == null )
 					{
+						LOGGER.debug("Reference root JSON document loaded from source.");
 						refJson = new ObjectMapper().readTree(loadLocation);
 						// Dereference the existing document
 						refJson = dereference(refJson, loadLocation, refJson);
 						this.dependencies.put(loadLocation, refJson);
 					}
+					else
+					{
+						LOGGER.debug("Reference root JSON document loaded from cache.");
+					}
 					
 					String fragment = loadLocation.toURI().getFragment();
 					
-					if( refLocalize != null )
-					{
-						
-					}
 					if( fragment != null && fragment.length() > 0 )
 					{
+						LOGGER.debug("JSON Fragment pointer=" + fragment);
 						refJson = refJson.at(fragment);
+						LOGGER.trace("JSON Fragment=" + refJson);
 					}
 					
 
 					if( jo.size() == 0 || refJson.isValueNode() || refJson.isArray() )
 					{
+						LOGGER.debug("Returning the resultant ref");
 						return refJson;
 					}
 					if( refDeep != null )
 					{
+						LOGGER.debug("Merging the ref deep");
 						merge(jo, (ObjectNode)refJson, true);
 					}
 					else
 					{
+						LOGGER.debug("Merging the ref shallow");
 						merge(jo, (ObjectNode)refJson, false);
 					}
 				}	
@@ -244,11 +264,16 @@ public class JsonDereferencer
 				JsonNode d = dereference(t, context, importLocalRefs);
 				if( t != d )
 				{
+					LOGGER.debug("Replacing the ref in the array at position " + i );
+					LOGGER.debug("Old value=" + t);
+					LOGGER.debug("New value=" + d);
+					
 					ja.remove(i);
 					ja.insert(i, d);
 				}
 			}
 		}
+		LOGGER.debug("Returning the final resultant object" );
 		return(o);
 	}
 	
@@ -262,21 +287,29 @@ public class JsonDereferencer
 			Map.Entry<String,JsonNode> e = i.next();
 			if( refIncludes != null && ! refIncludes.contains(e.getKey()) )
 			{
+				LOGGER.debug("Ignoring object \"" + e.getKey() + "\" since it is NOT in the refIncludes." );
 				continue;
 			}
 			if( refExcludes != null && refExcludes.contains(e.getKey()))
 			{
+				LOGGER.debug("Ignoring object \"" + e.getKey() + "\" since it is in the refExcludes." );
 				continue;
 			}
 			if( target.has(e.getKey()) )
 			{
 				if( target.get(e.getKey()) instanceof ObjectNode && e.getValue() instanceof ObjectNode && mergeDeep )
 				{
+					LOGGER.debug("Merging key " + e.getKey()  );
 					merge((ObjectNode)target.get(e.getKey()), (ObjectNode)e.getValue(), mergeDeep);
+				}
+				else
+				{
+					LOGGER.debug("Ignoring key \"" + e.getKey() + "\" because it already exists and we are performing a shallow merge.");
 				}
 			}
 			else
 			{
+				LOGGER.debug("Adding key " + e.getKey()  );
 				target.set(e.getKey(), e.getValue());
 			}
 		}
