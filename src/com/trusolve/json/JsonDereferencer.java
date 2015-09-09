@@ -210,6 +210,13 @@ public class JsonDereferencer
 					JsonNode refDeep = jo.remove("$refDeep");
 					LOGGER.debug("refDeep: " + refDeep);
 					
+					
+					// remove the refLocalize control variable.
+					// Variable set: the system will take this reference and localize it (doc local ref)
+					// Variable unset: the system will merge the reference in place
+					JsonNode refLocalize = jo.remove("$refLocalize");
+					LOGGER.debug("refLocalize: " + refLocalize);
+					
 					URL loadLocation = new URL(context, ref.asText() );
 					
 					LOGGER.debug("Reference load location is=" + loadLocation);
@@ -226,17 +233,25 @@ public class JsonDereferencer
 					{
 						LOGGER.debug("Reference root JSON document loaded from cache.");
 					}
-					
+										
 					String fragment = loadLocation.toURI().getFragment();
 					
+					if( refLocalize != null )
+					{
+						LOGGER.debug("Local reference is being created.");
+						addLocalReference( null, refJson, fragment );
+						jo.removeAll();
+						jo.put("$ref", "#" + fragment);
+						return o;
+					}
+
 					if( fragment != null && fragment.length() > 0 )
 					{
 						LOGGER.debug("JSON Fragment pointer=" + fragment);
 						refJson = refJson.at(fragment);
 						LOGGER.trace("JSON Fragment=" + refJson);
 					}
-					
-
+										
 					if( jo.size() == 0 || refJson.isValueNode() || refJson.isArray() )
 					{
 						LOGGER.debug("Returning the resultant ref");
