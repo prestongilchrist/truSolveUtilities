@@ -225,8 +225,6 @@ public class JsonDereferencer
 					{
 						LOGGER.debug("Reference root JSON document loaded from source.");
 						refJson = new ObjectMapper().readTree(loadLocation);
-						// Dereference the existing document
-						refJson = dereference(refJson, loadLocation, refJson);
 						this.dependencies.put(loadLocation, refJson);
 					}
 					else
@@ -235,26 +233,33 @@ public class JsonDereferencer
 					}
 										
 					String fragment = loadLocation.toURI().getFragment();
-					
-					if( refLocalize != null )
-					{
-						LOGGER.debug("Local reference is being created.");
-						addLocalReference( null, refJson, fragment );
-						jo.removeAll();
-						jo.put("$ref", "#" + fragment);
-						return o;
-					}
 
 					if( fragment != null && fragment.length() > 0 )
 					{
+						JsonNode refFragment = refJson.at(fragment);
+
+						if( refFragment != null && ! refFragment.isMissingNode() )
+						{
+							refFragment = dereference(refFragment, loadLocation, refJson);
+							if( refLocalize != null )
+							{
+								LOGGER.debug("Local reference is being created.");
+								// 	TODO: review the addLocalRefernce and make sure it will work when passed a fragment
+								addLocalReference( context, refJson, fragment );
+								jo.removeAll();
+								jo.put("$ref", "#" + fragment);
+								return o;
+							}
+						}
+
 						LOGGER.debug("JSON Fragment pointer=" + fragment);
-						refJson = refJson.at(fragment);
+						refJson = refFragment;
 						LOGGER.trace("JSON Fragment=" + refJson);
 					}
 										
 					if( jo.size() == 0 || refJson.isValueNode() || refJson.isArray() )
 					{
-						LOGGER.debug("Returning the resultant ref");
+						LOGGER.debug("Returning the result ref");
 						return refJson;
 					}
 					if( refDeep != null )
