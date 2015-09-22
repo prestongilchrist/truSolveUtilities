@@ -301,6 +301,15 @@ public class JsonDereferencer
 	{
 		List<String> refIncludes = getStringList(target.remove("$refIncludes"));
 		List<String> refExcludes = getStringList(target.remove("$refExcludes"));
+		ObjectNode arrayProcessingDirectives = null;
+		try
+		{
+			arrayProcessingDirectives = (ObjectNode)target.remove("$refArrayProcessing");
+		}
+		catch( Exception e )
+		{
+			LOGGER.error("Could not convert $refArrayProcessing directive to an ObjectNode, is it not the right JSON type (Object)?", e);
+		}
 
 		for( Iterator<Map.Entry<String,JsonNode>> i = source.fields() ; i.hasNext() ; )
 		{
@@ -321,6 +330,38 @@ public class JsonDereferencer
 				{
 					LOGGER.debug("Merging key " + e.getKey()  );
 					merge((ObjectNode)target.get(e.getKey()), (ObjectNode)e.getValue(), mergeDeep);
+				}
+				else if( arrayProcessingDirectives != null && e.getValue().isArray() && target.get(e.getKey()).isArray() && arrayProcessingDirectives.get(e.getKey()) != null )
+				{
+					try
+					{
+						ArrayNode refArrayRemovePartialMatch = (ArrayNode)arrayProcessingDirectives.get(e.getKey()).get("$refArrayRemovePartialMatch");
+						JsonNode refSetMerge = (ArrayNode)arrayProcessingDirectives.get(e.getKey()).get("$refSetMerge");
+						ArrayNode sourceArray = (ArrayNode)e.getValue();
+						ArrayNode targetArray = (ArrayNode)target.get(e.getKey());
+						
+						for( int sourceIndex = 0 ; sourceIndex < sourceArray.size() ; sourceIndex++ )
+						{
+							if( refArrayRemovePartialMatch != null && isPartialObjectMatch(sourceArray.get(sourceIndex), refArrayRemovePartialMatch ) )
+							{
+								LOGGER.debug("Removing object in Array merge at index " + sourceIndex);
+								continue;
+							}
+							if( refSetMerge != null )
+							{
+								if( targetContainsNode( targetArray, sourceArray.get(sourceIndex) ) )
+								{
+									LOGGER.debug("Removing duplicate object in Array merge at index " + sourceIndex);
+									continue;
+								}
+							}
+							targetArray.add(sourceArray.get(sourceIndex));
+						}
+					}
+					catch( Exception e1 )
+					{
+						LOGGER.error("Issue performing array merge directives.  Leaving target intact.", e1);
+					}
 				}
 				else
 				{
@@ -445,5 +486,81 @@ public class JsonDereferencer
 				}
 			}
 		}
+	}
+	
+	private boolean isPartialObjectMatch( JsonNode node, ArrayNode nodeList )
+	{
+		for( int i = 0 ; i < nodeList.size() ; i++ )
+		{
+			if( isPartialObjectMatch( node, nodeList.get(i) ) )
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+	
+	private boolean isPartialObjectMatch( JsonNode node, JsonNode partialNode )
+	{
+		if( node == partialNode )
+		{
+			return true;
+		}
+		if( node == null || partialNode == null )
+		{
+			return false;
+		}
+		if( node.getNodeType() != partialNode.getNodeType() )
+		{
+			return false;
+		}
+		if( node.isObject() && partialNode.isObject() )
+		{
+			return( isPartialObjectMatch( (ObjectNode)node, (ObjectNode)partialNode ) );
+		}
+		if( node.isArray() && partialNode.isArray() )
+		{
+			return( isPartialObjectMatch( (ArrayNode)node, (ArrayNode)partialNode ) );
+		}
+		if( node.isValueNode() && partialNode.isValueNode() )
+		{
+			return(node.equals(partialNode));
+		}
+		return false;
+	}
+	private boolean isPartialObjectMatch( ObjectNode node, ObjectNode partialNode )
+	{
+		for( Iterator<Map.Entry<String, JsonNode>> i = partialNode.fields() ; i.hasNext() ; )
+		{
+			Map.Entry<String,JsonNode> e = i.next();
+			if( ! isPartialObjectMatch(node.get(e.getKey()), e.getValue() ) )
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+	private boolean isPartialObjectMatch( ArrayNode node, ArrayNode partialNode )
+	{
+		for( int i = 0; i < partialNode.size() ; i++ )
+		{
+			if( ! isPartialObjectMatch(node.get(i), partialNode.get(i) ) )
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+	private boolean targetContainsNode( ArrayNode targetArray, JsonNode node )
+	{
+		for( Iterator<JsonNode> i = targetArray.elements() ; i.hasNext() ; )
+		{
+			JsonNode n = i.next();
+			if( n.equals(node) )
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 }
