@@ -417,6 +417,42 @@ public class JsonDereferencer
 		return null;
 	}
 	
+	private void findAndAddLocalReferences( URL context,  JsonNode sourceDocument, JsonNode refJson )
+	{
+		if( refJson.isValueNode() )
+		{
+			return;
+		}
+		if( refJson.isObject() )
+		{
+			ObjectNode o = (ObjectNode)refJson;
+			for( Iterator<Map.Entry<String, JsonNode>> i = o.fields() ; i.hasNext() ; )
+			{
+				Map.Entry<String, JsonNode> e = i.next();
+				if( "$ref".equals(e.getKey()) && e.getValue().isValueNode() )
+				{
+					String ref = e.getValue().asText();
+					if( ref != null && ref.startsWith("#/") )
+					{
+						addLocalReference( context, sourceDocument, ref.substring(1) );
+					}
+				}
+				else
+				{
+					findAndAddLocalReferences( context, sourceDocument, e.getValue() );
+				}
+			}
+		}
+		else if( refJson.isArray() )
+		{
+			ArrayNode o = (ArrayNode)refJson;
+			for( JsonNode n : o )
+			{
+				findAndAddLocalReferences( context, sourceDocument, n );
+			}
+		}
+	}
+	
 	private void addLocalReference( URL context,  JsonNode sourceDocument, String jsonPath )
 	{
 		String fragment = "#" + jsonPath;
@@ -426,6 +462,8 @@ public class JsonDereferencer
 		if( refJson != null && this.rootNode.isObject() && this.rootNode.at(jsonPath).isMissingNode() )
 		{
 			ObjectNode addPoint = (ObjectNode)this.rootNode;
+			
+			findAndAddLocalReferences( context, sourceDocument, refJson );
 			
 			StringBuffer jsonPathLocation = new StringBuffer();
 			
