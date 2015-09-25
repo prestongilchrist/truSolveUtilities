@@ -10,6 +10,7 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +35,7 @@ public class JsonDereferencer
 	private JsonNode rootNode;
 	private URL rootContext;
 	private Map<URL,JsonNode> dependencies = new HashMap<URL,JsonNode>();
-	private Map<String,String> refAliases = new HashMap<String,String>();
+	private Map<JsonNode,Map<String,String>> refAliases = new IdentityHashMap<JsonNode,Map<String,String>>();
 	
 	public static void main(String[] args)
 	{
@@ -131,7 +132,7 @@ public class JsonDereferencer
 		return dereference(o, context, null);
 	}
 	
-	private void setAliases( JsonNode aliasObject )
+	private void setAliases( JsonNode aliasObject, JsonNode currentDocument )
 	{
 		if( aliasObject == null )
 		{
@@ -155,17 +156,23 @@ public class JsonDereferencer
 			}
 			String value = valueNode.asText();
 			LOGGER.debug("Setting refAliases key=" + key + " value=" + value );
-			refAliases.put( key, value );
+			Map<String,String> documentAliases = refAliases.get(currentDocument);
+			if( documentAliases == null )
+			{
+				documentAliases = new HashMap<String,String>();
+				refAliases.put(currentDocument,documentAliases);
+			}
+			documentAliases.put( key, value );
 		}
 	}
-	private JsonNode dereference( JsonNode o, URL context, JsonNode importLocalRefs )
+	private JsonNode dereference( JsonNode o, URL context, JsonNode currentDocument )
 		throws JsonProcessingException, IOException, URISyntaxException
 	{
 		if( o instanceof ObjectNode )
 		{
 			ObjectNode jo = (ObjectNode)o;
 
-			setAliases( jo.remove("$refAliases") );
+			setAliases( jo.remove("$refAliases"), currentDocument );
 			
 			// first iterate through each item and dereference it
 			for( Iterator<Map.Entry<String,JsonNode>> i = jo.fields() ; i.hasNext() ; )
@@ -173,7 +180,7 @@ public class JsonDereferencer
 				Map.Entry<String,JsonNode> e = i.next();
 				JsonNode valueObject = e.getValue();
 				LOGGER.debug( "Processing node for dereference: " + e.getKey() + ":" + e.getValue() );
-				JsonNode d = dereference(e.getValue(), context, importLocalRefs);
+				JsonNode d = dereference(e.getValue(), context, currentDocument);
 				if( valueObject != d )
 				{
 					jo.replace(e.getKey(), d );
@@ -219,10 +226,10 @@ public class JsonDereferencer
 					if( refHref != null && refHref.startsWith("#") )
 					{
 						LOGGER.debug("Reference is on the document currently being processed");
-						if( importLocalRefs != null && refHref.length() > 2 )
+						if( currentDocument != null && refHref.length() > 2 )
 						{
 							LOGGER.debug("Local reference is being imported into the root document");
-							addLocalReference( context, importLocalRefs, refHref.substring(1) );
+							addLocalReference( context, currentDocument, refHref.substring(1) );
 							return o;
 						}
 						if( refs.size() == 1 && ! dereferenceLocalRefs )
@@ -241,7 +248,12 @@ public class JsonDereferencer
 						if( pointerIndex > 0 )
 						{
 							String alias = refHref.substring(1, pointerIndex );
-							String aliasValue = refAliases.get(alias);
+							Map<String,String> documentAliases = refAliases.get(currentDocument);
+							String aliasValue = null;
+							if( documentAliases != null )
+							{
+								aliasValue = documentAliases.get(alias);
+							}
 							if( aliasValue == null )
 							{
 								LOGGER.error("Reference alias \"" + refHref + "\" specified, but corresponding alias value not found." );
@@ -335,7 +347,7 @@ public class JsonDereferencer
 			for( int i = 0 ; i < ja.size() ; i++ )
 			{
 				JsonNode t = ja.get(i); 
-				JsonNode d = dereference(t, context, importLocalRefs);
+				JsonNode d = dereference(t, context, currentDocument);
 				if( t != d )
 				{
 					LOGGER.debug("Replacing the ref in the array at position " + i );
