@@ -34,6 +34,7 @@ public class JsonDereferencer
 	private JsonNode rootNode;
 	private URL rootContext;
 	private Map<URL,JsonNode> dependencies = new HashMap<URL,JsonNode>();
+	private Map<String,String> refAliases = new HashMap<String,String>();
 	
 	public static void main(String[] args)
 	{
@@ -130,6 +131,33 @@ public class JsonDereferencer
 		return dereference(o, context, null);
 	}
 	
+	private void setAliases( JsonNode aliasObject )
+	{
+		if( aliasObject == null )
+		{
+			LOGGER.trace("No alias object");
+			return;
+		}
+		if( ! aliasObject.isObject() )
+		{
+			LOGGER.error("$refAliases supplied, but it is not a JSON Object");
+			return;
+		}
+		for( Iterator<Map.Entry<String, JsonNode>> i = aliasObject.fields() ; i.hasNext() ; )
+		{
+			Map.Entry<String, JsonNode> e = i.next();
+			String key = e.getKey();
+			JsonNode valueNode = e.getValue();
+			if( ! valueNode.isValueNode() )
+			{
+				LOGGER.error("refAlias for key=" + key + " is not a text value");
+				continue;
+			}
+			String value = valueNode.asText();
+			LOGGER.debug("Setting refAliases key=" + key + " value=" + value );
+			refAliases.put( key, value );
+		}
+	}
 	private JsonNode dereference( JsonNode o, URL context, JsonNode importLocalRefs )
 		throws JsonProcessingException, IOException, URISyntaxException
 	{
@@ -137,6 +165,8 @@ public class JsonDereferencer
 		{
 			ObjectNode jo = (ObjectNode)o;
 
+			setAliases( jo.remove("$refAliases") );
+			
 			// first iterate through each item and dereference it
 			for( Iterator<Map.Entry<String,JsonNode>> i = jo.fields() ; i.hasNext() ; )
 			{
@@ -150,7 +180,7 @@ public class JsonDereferencer
 				}
 			}
 			
-			// then check is we have a reference here that we need to handle
+			// then check if we have a reference here that we need to handle
 			JsonNode ref = jo.get("$ref");
 			JsonNode refIgnore = jo.remove("$refIgnore");
 			LOGGER.debug("Checking for reference.  ref=" + ref + " / refIgnore=" + refIgnore );
@@ -204,6 +234,30 @@ public class JsonDereferencer
 					}
 					// Remove the reference control variables from the resulting JSON document
 					jo.remove("$ref");
+					
+					if( refHref != null && refHref.startsWith("@") )
+					{
+						int pointerIndex = refHref.indexOf("#");
+						if( pointerIndex > 0 )
+						{
+							String alias = refHref.substring(1, pointerIndex );
+							String aliasValue = refAliases.get(alias);
+							if( aliasValue == null )
+							{
+								LOGGER.error("Reference alias \"" + refHref + "\" specified, but corresponding alias value not found." );
+							}
+							else
+							{
+								LOGGER.debug("Replacing refHref alias old value=" + refHref);
+								refHref = aliasValue + refHref.substring(pointerIndex);
+								LOGGER.debug("Replacing refHref alias new value=" + refHref);
+							}
+						}
+						else
+						{
+							LOGGER.error("Invalid reference alias: " + refHref);
+						}
+					}
 					// remove the refDeep control variable.
 					// Variable set: the system will merge all JSON objects and their descendants
 					// Variable unset: the system will merge only the JSON name/value pair within the ref
@@ -217,7 +271,7 @@ public class JsonDereferencer
 					JsonNode refLocalize = jo.remove("$refLocalize");
 					LOGGER.debug("refLocalize: " + refLocalize);
 					
-					URL loadLocation = new URL(context, ref.asText() );
+					URL loadLocation = new URL(context, refHref );
 					
 					LOGGER.debug("Reference load location is=" + loadLocation);
 					JsonNode refJson = getJsonFromCache(loadLocation);
