@@ -144,6 +144,10 @@ public class JsonDereferencer
 			LOGGER.error("$refAliases supplied, but it is not a JSON Object");
 			return;
 		}
+		if( currentDocument == null ) 
+		{
+			currentDocument = this.rootNode;
+		}
 		for( Iterator<Map.Entry<String, JsonNode>> i = aliasObject.fields() ; i.hasNext() ; )
 		{
 			Map.Entry<String, JsonNode> e = i.next();
@@ -168,6 +172,10 @@ public class JsonDereferencer
 	private JsonNode dereference( JsonNode o, URL context, JsonNode currentDocument )
 		throws JsonProcessingException, IOException, URISyntaxException
 	{
+		if( currentDocument == null ) 
+		{
+			currentDocument = this.rootNode;
+		}
 		if( o instanceof ObjectNode )
 		{
 			ObjectNode jo = (ObjectNode)o;
@@ -190,6 +198,7 @@ public class JsonDereferencer
 			// then check if we have a reference here that we need to handle
 			JsonNode ref = jo.get("$ref");
 			JsonNode refIgnore = jo.remove("$refIgnore");
+			JsonNode refInline = jo.remove("$refInline");
 			LOGGER.debug("Checking for reference.  ref=" + ref + " / refIgnore=" + refIgnore );
 			if( ref != null && refIgnore == null )
 			{
@@ -223,16 +232,21 @@ public class JsonDereferencer
 				for(String refHref : refs)
 				{
 					LOGGER.debug("Processing reference for " + refHref);
-					if( refHref != null && refHref.startsWith("#") )
+					if( refHref == null ) 
+					{
+						LOGGER.error("$ref returned as null (" + o.toString() + ").  Ref left intact.");
+						return o;
+					}
+					if( refHref.startsWith("#") )
 					{
 						LOGGER.debug("Reference is on the document currently being processed");
-						if( currentDocument != null && refHref.length() > 2 )
+						if( currentDocument != null && currentDocument != this.rootNode && refHref.length() > 2 )
 						{
 							LOGGER.debug("Local reference is being imported into the root document");
 							addLocalReference( context, currentDocument, refHref.substring(1) );
 							return o;
 						}
-						if( refs.size() == 1 && ! dereferenceLocalRefs )
+						if( refs.size() == 1 && ! dereferenceLocalRefs && refInline == null )
 						{
 							// If there is more than 1 reference we must ALWAYS dereference with a merge operation
 							LOGGER.debug("This is a single local reference and dereference locals is off, including as is");
@@ -242,7 +256,7 @@ public class JsonDereferencer
 					// Remove the reference control variables from the resulting JSON document
 					jo.remove("$ref");
 					
-					if( refHref != null && refHref.startsWith("@") )
+					if( refHref.startsWith("@") )
 					{
 						int pointerIndex = refHref.indexOf("#");
 						if( pointerIndex > 0 )
@@ -283,22 +297,34 @@ public class JsonDereferencer
 					JsonNode refLocalize = jo.remove("$refLocalize");
 					LOGGER.debug("refLocalize: " + refLocalize);
 					
-					URL loadLocation = new URL(context, refHref );
-					
-					LOGGER.debug("Reference load location is=" + loadLocation);
-					JsonNode refJson = getJsonFromCache(loadLocation);
-					if( refJson == null )
+					URL loadLocation = null;
+					String fragment = null;
+					JsonNode refJson = null;
+					if( refHref.startsWith("#") )
 					{
-						LOGGER.debug("Reference root JSON document loaded from source.");
-						refJson = new ObjectMapper().readTree(loadLocation);
-						this.dependencies.put(loadLocation, refJson);
+						// Reference is on the local document and is intended to be inlined
+						refJson = this.rootNode;
+						fragment = refHref.substring(1);
 					}
 					else
 					{
-						LOGGER.debug("Reference root JSON document loaded from cache.");
+						// Reference is on a remote document
+						loadLocation = new URL(context, refHref );
+						LOGGER.debug("Reference load location is=" + loadLocation);
+						refJson = getJsonFromCache(loadLocation);
+						if( refJson == null )
+						{
+							LOGGER.debug("Reference root JSON document loaded from source.");
+							refJson = new ObjectMapper().readTree(loadLocation);
+							this.dependencies.put(loadLocation, refJson);
+						}
+						else
+						{
+							LOGGER.debug("Reference root JSON document loaded from cache.");
+						}
+											
+						fragment = loadLocation.toURI().getFragment();
 					}
-										
-					String fragment = loadLocation.toURI().getFragment();
 
 					if( fragment != null && fragment.length() > 0 )
 					{
